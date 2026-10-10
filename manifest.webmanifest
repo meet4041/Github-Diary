@@ -1,0 +1,10 @@
+{
+  "name": "GitHub Diary",
+  "short_name": "GitHub Diary",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7faf6",
+  "theme_color": "#1e6045",
+  "description": "A calmer, clearer way to explore your GitHub repositories.",
+  "icons": []
+}

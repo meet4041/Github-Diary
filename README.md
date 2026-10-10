@@ -16,4 +16,8 @@ To include private repositories for a personal dashboard, optionally enter a Git
 
 Click the info button on any repository card to open its full details page.
 
+The details page includes repository metadata, feature support, topics, clone commands, a README preview, recent commits, locally saved labels and notes, dark mode, and a copyable share link for public repositories.
+
+The collection also supports favorites, language/type filters, list view, analytics, and JSON export. GitHub Diary includes a lightweight PWA shell for installable offline access to the interface.
+
 No API key is required for public repositories. GitHub's unauthenticated API has a rate limit, so a future production version could add a small server-side cache if needed.

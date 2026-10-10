@@ -4,11 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="A beautiful overview of your GitHub repositories." />
+    <meta property="og:title" content="GitHub Diary" />
+    <meta property="og:description" content="A calmer, clearer way to explore your GitHub projects." />
+    <meta name="theme-color" content="#1e6045" />
     <title>GitHub Diary</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="manifest" href="manifest.webmanifest" />
     <script src="script.js" defer></script>
   </head>
   <body>
@@ -17,7 +21,7 @@
 
     <header class="site-header">
       <a class="brand" href=".">GitHub<span>Diary</span></a>
-      <a class="github-link" href="https://github.com" target="_blank" rel="noreferrer">Open GitHub <span aria-hidden="true">↗</span></a>
+      <div class="header-actions"><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">☾</button><a class="github-link" href="https://github.com" target="_blank" rel="noreferrer">Open GitHub <span aria-hidden="true">↗</span></a></div>
     </header>
 
     <main class="container">
@@ -47,6 +51,13 @@
       </section>
 
       <section id="dashboard" class="dashboard" aria-live="polite">
+        <div id="profile-card" class="profile-card hidden"></div>
+        <section id="featured-section" class="featured-section hidden">
+          <div class="section-heading"><div><p class="section-label">Editor’s picks</p><h2>Featured projects</h2></div><span class="section-hint">Your standout work</span></div>
+          <div id="featured-grid" class="featured-grid"></div>
+        </section>
+        <section id="analytics-section" class="analytics-section hidden"><div class="section-heading"><div><p class="section-label">Collection insights</p><h2>Built with</h2></div><span class="section-hint">Languages across your repositories</span></div><div id="language-chart" class="language-chart"></div></section>
+        <section id="activity-section" class="analytics-section hidden"><div class="section-heading"><div><p class="section-label">Public activity</p><h2 id="activity-summary">Public contributions</h2></div><span class="section-hint">Commits found this year</span></div><div class="activity-year-control"><label for="activity-year">Year</label><select id="activity-year"></select></div><div class="contribution-layout"><div class="contribution-card"><div id="activity-months" class="activity-months"></div><div class="contribution-body"><div class="weekday-labels"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div><div id="activity-chart" class="activity-chart"></div></div><div class="contribution-footer"><span>Public commits · GitHub search API</span><span class="activity-legend"><span>Less</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>More</span></span></div><div id="activity-overview" class="activity-overview"></div></div></div></section>
         <div class="dashboard-topline">
           <div>
             <p class="section-label">Repository collection</p>
@@ -57,7 +68,7 @@
 
         <div id="toolbar" class="toolbar hidden">
           <label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search repositories..." /></label>
-          <label class="select-box"><span class="sr-only">Sort repositories</span><select id="sort"><option value="updated">Recently updated</option><option value="stars">Most starred</option><option value="name">Name A–Z</option></select></label>
+          <label class="select-box"><span class="sr-only">Sort repositories</span><select id="sort"><option value="updated">Recently updated</option><option value="stars">Most starred</option><option value="name">Name A–Z</option></select></label><button id="view-toggle" class="view-toggle" type="button" aria-label="Switch to list view">☷</button><button id="export-button" class="export-button" type="button">Export JSON</button><button id="compare-button" class="export-button hidden" type="button">Compare 0</button>
         </div>
 
         <div id="language-filters" class="filters hidden"></div>

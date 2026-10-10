@@ -9,13 +9,38 @@ const searchInput = document.querySelector("#search");
 const sortSelect = document.querySelector("#sort");
 const profileTitle = document.querySelector("#profile-title");
 const profileSummary = document.querySelector("#profile-summary");
+const profileCard = document.querySelector("#profile-card");
+const featuredSection = document.querySelector("#featured-section");
+const featuredGrid = document.querySelector("#featured-grid");
+const analyticsSection = document.querySelector("#analytics-section");
+const languageChart = document.querySelector("#language-chart");
+const activitySection = document.querySelector("#activity-section");
+const activityChart = document.querySelector("#activity-chart");
+const activityYearSelect = document.querySelector("#activity-year");
+const activityTooltip = document.createElement("div");
+activityTooltip.className = "activity-tooltip";
+activityTooltip.setAttribute("role", "tooltip");
+document.body.append(activityTooltip);
+const viewToggle = document.querySelector("#view-toggle");
+const exportButton = document.querySelector("#export-button");
+const compareButton = document.querySelector("#compare-button");
 const dashboard = document.querySelector("#dashboard");
 const repoDetail = document.querySelector("#repo-detail");
+const themeToggle = document.querySelector("#theme-toggle");
 
 let repositories = [];
 let selectedLanguage = "All";
+let listView = false;
+let favorites = new Set(JSON.parse(localStorage.getItem("github-diary-favorites") || "[]"));
+let compareSelection = new Set();
+const activityCountCache = new Map();
+let activityUsername = "";
+let activityTopEvents = [];
 
 document.querySelector("#year").textContent = new Date().getFullYear();
+applyTheme();
+themeToggle.addEventListener("click", toggleTheme);
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -25,12 +50,57 @@ form.addEventListener("submit", (event) => {
 
 searchInput.addEventListener("input", renderRepositories);
 sortSelect.addEventListener("change", renderRepositories);
+viewToggle.addEventListener("click", () => { listView = !listView; repoGrid.classList.toggle("list-view", listView); viewToggle.textContent = listView ? "▦" : "☷"; viewToggle.setAttribute("aria-label", listView ? "Switch to grid view" : "Switch to list view"); });
+exportButton.addEventListener("click", exportRepositories);
+compareButton.addEventListener("click", compareRepositories);
+activityYearSelect.addEventListener("change", async () => {
+  if (!activityUsername) return;
+  activityYearSelect.disabled = true;
+  const year = Number(activityYearSelect.value);
+  const counts = await fetchCommitCounts(activityUsername, year);
+  renderActivityYear(year, counts, activityTopEvents);
+  activityYearSelect.disabled = false;
+});
 repoGrid.addEventListener("click", (event) => {
+  const favoriteButton = event.target.closest("[data-favorite-id]");
+  if (favoriteButton) {
+    event.stopPropagation();
+    toggleFavorite(favoriteButton.dataset.favoriteId);
+    return;
+  }
+  const compareControl = event.target.closest("[data-compare-id]");
+  if (compareControl) {
+    event.stopPropagation();
+    toggleCompare(compareControl.dataset.compareId);
+    return;
+  }
   const infoButton = event.target.closest("[data-repo-id]");
   if (!infoButton) return;
   const repo = repositories.find((item) => String(item.id) === infoButton.dataset.repoId);
   if (repo) openRepositoryDetails(repo);
 });
+
+activityChart.addEventListener("mouseover", (event) => {
+  const cell = event.target.closest(".activity-cell");
+  if (!cell) return;
+  activityTooltip.textContent = cell.dataset.tooltip || "";
+  activityTooltip.classList.add("visible");
+  positionActivityTooltip(cell);
+});
+activityChart.addEventListener("mousemove", (event) => {
+  if (activityTooltip.classList.contains("visible")) positionActivityTooltip(event);
+});
+activityChart.addEventListener("mouseout", (event) => {
+  if (!event.relatedTarget || !event.relatedTarget.closest?.(".activity-cell")) activityTooltip.classList.remove("visible");
+});
+
+function positionActivityTooltip(target) {
+  const rect = target.getBoundingClientRect ? target.getBoundingClientRect() : { left: target.clientX, top: target.clientY, width: 0 };
+  const left = rect.left + rect.width / 2;
+  const top = rect.top - 10;
+  activityTooltip.style.left = `${left}px`;
+  activityTooltip.style.top = `${top}px`;
+}
 
 async function loadProfile(username) {
   setLoading(true);
@@ -46,6 +116,11 @@ async function loadProfile(username) {
 
     const profile = await profileResponse.json();
     repositories = fetchedRepositories;
+    if (!token) localStorage.setItem(`github-diary-cache:${profile.login}`, JSON.stringify({ profile, repositories, savedAt: Date.now() }));
+    renderProfileCard(profile);
+    renderFeaturedRepositories();
+    renderLanguageChart();
+    scheduleActivityChart(profile.login);
     profileTitle.textContent = `${profile.login}'s repositories`;
     const privateCount = repositories.filter((repo) => repo.private).length;
     const accessLabel = token ? `<strong>${privateCount}</strong> private repos included · ` : "";
@@ -63,6 +138,135 @@ async function loadProfile(username) {
   } finally {
     setLoading(false);
   }
+}
+
+function renderFeaturedRepositories() {
+  const featured = repositories.filter((repo) => !repo.fork && !repo.archived).sort((a, b) => {
+    const scoreA = (a.stargazers_count || 0) * 10 + new Date(a.updated_at).getTime() / 1000000000;
+    const scoreB = (b.stargazers_count || 0) * 10 + new Date(b.updated_at).getTime() / 1000000000;
+    return scoreB - scoreA;
+  }).slice(0, 3);
+  if (!featured.length) return;
+  featuredGrid.innerHTML = featured.map((repo, index) => `<article class="featured-card"><div class="featured-number">0${index + 1}</div><div class="featured-card-body"><div class="featured-card-top"><span class="featured-language">${repo.language ? escapeHtml(repo.language) : "Project"}</span><span>★ ${repo.stargazers_count || 0}</span></div><h3>${escapeHtml(repo.name)}</h3><p>${escapeHtml(repo.description || "A project from the collection.")}</p><a href="${repo.html_url}" target="_blank" rel="noreferrer">Explore project ↗</a></div></article>`).join("");
+  featuredSection.classList.remove("hidden");
+}
+
+function renderLanguageChart() {
+  const counts = repositories.reduce((result, repo) => { if (repo.language) result[repo.language] = (result[repo.language] || 0) + 1; return result; }, {});
+  const languages = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const max = languages[0]?.[1] || 1;
+  if (!languages.length) return;
+  languageChart.innerHTML = languages.map(([language, count]) => `<div class="language-row"><div class="language-row-label"><span>${escapeHtml(language)}</span><strong>${count}</strong></div><div class="language-bar"><i style="width:${Math.round((count / max) * 100)}%"></i></div></div>`).join("");
+  analyticsSection.classList.remove("hidden");
+}
+
+async function loadActivityChart(username) {
+  try {
+    activityUsername = username;
+    const response = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}/events/public?per_page=100`, { headers: { Accept: "application/vnd.github+json" } });
+    if (!response.ok) throw new Error();
+    const events = await response.json();
+    const eventCounts = events.reduce((result, event) => { result[event.type] = (result[event.type] || 0) + 1; return result; }, {});
+    const topEvents = Object.entries(eventCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    activityTopEvents = topEvents;
+    const currentYear = new Date().getFullYear();
+    activityYearSelect.innerHTML = Array.from({ length: 5 }, (_, index) => { const year = currentYear - index; return `<option value="${year}">${year}</option>`; }).join("");
+    const counts = await fetchCommitCounts(username, currentYear);
+    renderActivityYear(currentYear, counts, topEvents);
+    activitySection.classList.remove("hidden");
+  } catch {
+    activitySection.classList.add("hidden");
+  }
+}
+
+function scheduleActivityChart(username) {
+  const run = () => loadActivityChart(username);
+  if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 1200 });
+  else window.setTimeout(run, 120);
+}
+
+async function fetchCommitCounts(username, year) {
+  const cacheKey = `${username}:${year}`;
+  if (activityCountCache.has(cacheKey)) return activityCountCache.get(cacheKey);
+  const saved = localStorage.getItem(`github-diary-activity:${cacheKey}`);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Date.now() - parsed.savedAt < 10 * 60 * 1000) {
+        activityCountCache.set(cacheKey, parsed.counts);
+        return parsed.counts;
+      }
+    } catch {
+      localStorage.removeItem(`github-diary-activity:${cacheKey}`);
+    }
+  }
+  const counts = {};
+  try {
+    for (let page = 1; page <= 10; page += 1) {
+      const query = encodeURIComponent(`author:${username} committer-date:${year}-01-01..${year}-12-31`);
+      const response = await fetch(`https://api.github.com/search/commits?q=${query}&per_page=100&page=${page}`, { headers: { Accept: "application/vnd.github+json" } });
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      data.items.forEach((commit) => { const date = (commit.commit?.author?.date || commit.commit?.committer?.date || "").slice(0, 10); if (date) counts[date] = (counts[date] || 0) + 1; });
+      if (data.items.length < 100) break;
+    }
+  } catch {
+    // Keep the calendar usable when GitHub's search rate limit is reached.
+  }
+  activityCountCache.set(cacheKey, counts);
+  localStorage.setItem(`github-diary-activity:${cacheKey}`, JSON.stringify({ savedAt: Date.now(), counts }));
+  return counts;
+}
+
+function renderActivityYear(year, counts, topEvents) {
+  const start = new Date(year, 0, 1);
+  start.setDate(start.getDate() - start.getDay());
+  const end = new Date(year, 11, 31);
+  end.setDate(end.getDate() + (6 - end.getDay()));
+  const days = [];
+  for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) days.push(dateKey(date));
+  const max = Math.max(1, ...days.map((day) => counts[day] || 0));
+  const total = days.reduce((sum, day) => sum + (counts[day] || 0), 0);
+  activityChart.innerHTML = days.map((day) => { const isInYear = day.startsWith(`${year}-`); if (!isInYear) return '<span class="activity-cell outside-year" aria-hidden="true"></span>'; const count = counts[day] || 0; const level = count ? Math.min(4, Math.ceil((count / max) * 4)) : 0; const readableDate = formatContributionDate(day); const tooltip = `${count} commit${count === 1 ? "" : "s"} on ${readableDate}`; return `<span class="activity-cell level-${level}" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}"></span>`; }).join("");
+  document.querySelector("#activity-summary").textContent = `${total.toLocaleString()} public commits in ${year}`;
+  document.querySelector("#activity-months").innerHTML = Array.from({ length: 12 }, (_, index) => { const monthStart = new Date(year, index, 1); const column = Math.floor((monthStart - start) / (7 * 24 * 60 * 60 * 1000)) + 1; return `<span style="grid-column: ${column}">${new Intl.DateTimeFormat(undefined, { month: "short" }).format(monthStart)}</span>`; }).join("");
+  const overviewEvents = topEvents.map(([type, count]) => `<span><b>${count}</b> ${escapeHtml(type.replace("Event", "").replace(/([A-Z])/g, " $1").trim())}</span>`).join("");
+  document.querySelector("#activity-overview").innerHTML = `<strong>Activity overview</strong><div><span><b>${total}</b> commits</span>${overviewEvents || ""}</div>`;
+}
+
+function dateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatContributionDate(value) {
+  const date = new Date(`${value}T12:00:00`);
+  const day = date.getDate();
+  const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
+  return `${day}${suffix} ${new Intl.DateTimeFormat(undefined, { month: "short" }).format(date)}, ${date.getFullYear()}`;
+}
+
+function renderProfileCard(profile) {
+  const totalStars = repositories.reduce((total, repo) => total + (repo.stargazers_count || 0), 0);
+  const website = profile.blog ? `<a href="${normaliseUrl(profile.blog)}" target="_blank" rel="noreferrer">${escapeHtml(profile.blog.replace(/^https?:\/\//, ""))} ↗</a>` : "";
+  const location = profile.location ? `<span>⌖ ${escapeHtml(profile.location)}</span>` : "";
+  profileCard.innerHTML = `<div class="profile-identity"><img src="${profile.avatar_url}" alt="${escapeHtml(profile.login)} avatar" width="82" height="82" loading="lazy" decoding="async" /><div><p class="section-label">GitHub profile</p><h2>${escapeHtml(profile.name || profile.login)}</h2><a class="profile-handle" href="${profile.html_url}" target="_blank" rel="noreferrer">@${escapeHtml(profile.login)} ↗</a><p class="profile-bio">${profile.bio ? escapeHtml(profile.bio) : "Building, experimenting, and shipping ideas."}</p><div class="profile-location">${location}${website}</div></div></div><div class="profile-metrics"><div><strong>${profile.followers ?? 0}</strong><span>Followers</span></div><div><strong>${profile.following ?? 0}</strong><span>Following</span></div><div><strong>${repositories.length}</strong><span>Repositories</span></div><div><strong>${totalStars}</strong><span>Total stars</span></div></div>`;
+  profileCard.classList.remove("hidden");
+}
+
+function normaliseUrl(value) {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function applyTheme() {
+  const dark = localStorage.getItem("github-diary-theme") === "dark";
+  document.body.classList.toggle("dark-mode", dark);
+  themeToggle.textContent = dark ? "☀" : "☾";
+}
+
+function toggleTheme() {
+  const dark = !document.body.classList.contains("dark-mode");
+  localStorage.setItem("github-diary-theme", dark ? "dark" : "light");
+  applyTheme();
 }
 
 async function fetchAllRepositories(firstUrl, headers) {
@@ -118,7 +322,44 @@ function repoCard(repo) {
   const description = repo.description ? escapeHtml(repo.description) : "No description added yet.";
   const language = repo.language ? `<span class="language"><i class="language-dot"></i>${escapeHtml(repo.language)}</span>` : '<span class="language">Project</span>';
   const visibility = repo.private ? " · Private" : "";
-  return `<article class="repo-card"><div class="repo-card-head"><h3><a href="${repo.html_url}" target="_blank" rel="noreferrer">${escapeHtml(repo.name)} ↗</a></h3><button class="info-button" type="button" data-repo-id="${repo.id}" aria-label="View details for ${escapeHtml(repo.name)}">i</button></div><p class="repo-description">${description}</p><div class="card-bottom">${language}<span class="stats">★ ${repo.stargazers_count} · ⑂ ${repo.forks_count}${visibility}</span></div></article>`;
+  const isFavorite = favorites.has(String(repo.id));
+  const isCompared = compareSelection.has(String(repo.id));
+  return `<article class="repo-card"><div class="repo-card-head"><h3><a href="${repo.html_url}" target="_blank" rel="noreferrer">${escapeHtml(repo.name)} ↗</a></h3><div class="repo-card-actions"><button class="favorite-button ${isFavorite ? "active" : ""}" type="button" data-favorite-id="${repo.id}" aria-label="${isFavorite ? "Remove" : "Add"} ${escapeHtml(repo.name)} ${isFavorite ? "from" : "to"} favorites">★</button><button class="compare-select ${isCompared ? "active" : ""}" type="button" data-compare-id="${repo.id}" aria-label="${isCompared ? "Remove" : "Add"} ${escapeHtml(repo.name)} ${isCompared ? "from" : "to"} comparison">Compare</button><button class="info-button" type="button" data-repo-id="${repo.id}" aria-label="View details for ${escapeHtml(repo.name)}">i</button></div></div><p class="repo-description">${description}</p><div class="card-bottom">${language}<span class="stats">★ ${repo.stargazers_count} · ⑂ ${repo.forks_count}${visibility}</span></div></article>`;
+}
+
+function toggleFavorite(repositoryId) {
+  const id = String(repositoryId);
+  if (favorites.has(id)) favorites.delete(id);
+  else favorites.add(id);
+  localStorage.setItem("github-diary-favorites", JSON.stringify([...favorites]));
+  renderRepositories();
+}
+
+function exportRepositories() {
+  const blob = new Blob([JSON.stringify(repositories, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "github-diary-repositories.json";
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function toggleCompare(repositoryId) {
+  const id = String(repositoryId);
+  if (compareSelection.has(id)) compareSelection.delete(id);
+  else if (compareSelection.size < 2) compareSelection.add(id);
+  renderRepositories();
+  compareButton.textContent = `Compare ${compareSelection.size}`;
+  compareButton.classList.toggle("hidden", compareSelection.size !== 2);
+}
+
+function compareRepositories() {
+  const selected = repositories.filter((repo) => compareSelection.has(String(repo.id)));
+  if (selected.length !== 2) return;
+  repoDetail.innerHTML = `<button class="back-button" type="button" id="close-comparison">← Back to repositories</button><div class="detail-header"><div><p class="section-label">Comparison</p><h2>${escapeHtml(selected[0].name)} vs ${escapeHtml(selected[1].name)}</h2></div></div><div class="comparison-grid">${selected.map((repo) => `<div class="detail-block"><h3>${escapeHtml(repo.name)}</h3><span>Language</span><strong>${escapeHtml(repo.language || "—")}</strong><span>Stars</span><strong>${repo.stargazers_count || 0}</strong><span>Forks</span><strong>${repo.forks_count || 0}</strong><span>Open issues</span><strong>${repo.open_issues_count || 0}</strong><span>Size</span><strong>${repo.size ? `${repo.size.toLocaleString()} KB` : "—"}</strong></div>`).join("")}</div>`;
+  dashboard.classList.add("hidden");
+  repoDetail.classList.remove("hidden");
+  document.querySelector("#close-comparison").addEventListener("click", () => { repoDetail.classList.add("hidden"); dashboard.classList.remove("hidden"); });
 }
 
 function openRepositoryDetails(repo) {
