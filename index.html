@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A beautiful overview of your GitHub repositories." />
+    <title>GitHub Diary</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <div class="background-glow glow-one"></div>
+    <div class="background-glow glow-two"></div>
+
+    <header class="site-header">
+      <a class="brand" href=".">GitHub<span>Diary</span></a>
+      <a class="github-link" href="https://github.com" target="_blank" rel="noreferrer">Open GitHub <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <div class="hero-copy-column">
+        <h1>Your code,<br /><em>beautifully collected.</em></h1>
+          <p class="hero-copy">A calmer, clearer way to explore the projects, experiments, and ideas you’ve built.</p>
+
+          <a class="oauth-button" href="/api/auth/login"><span class="github-mark">●</span> Continue with GitHub <span aria-hidden="true">↗</span></a>
+          <p class="oauth-note">Sign in securely to include your private repositories.</p>
+
+          <form id="profile-form" class="profile-form">
+          <div class="form-row"><label class="sr-only" for="username">GitHub username</label><span class="input-prefix">github.com/</span><input id="username" name="username" type="text" placeholder="your-username" autocomplete="off" required /></div>
+          <div class="form-row token-row"><label class="sr-only" for="token">GitHub personal access token</label><span class="token-icon" aria-hidden="true">⌁</span><input id="token" name="token" type="password" placeholder="Private token (optional)" autocomplete="off" /><button type="submit">View collection <span aria-hidden="true">↗</span></button></div>
+        </form>
+        <p class="token-note"><span aria-hidden="true">▣</span> Private access is temporary and your token is never saved.</p>
+        <a class="token-help" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">Get a GitHub token <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="hero-showcase" aria-label="Preview of a repository collection">
+          <div class="showcase-glow"></div>
+          <div class="showcase-window">
+            <div class="window-top"><span class="window-dots"><i></i><i></i><i></i></span><span>your collection</span><span>•••</span></div>
+            <div class="showcase-profile"><div class="avatar-mark">GH</div><div><strong>Featured work</strong><small>Projects worth revisiting</small></div><span class="live-pill">LIVE</span></div>
+            <div class="mini-repo"><span class="repo-icon">✦</span><div><strong>Design system</strong><small>TypeScript · Updated today</small></div><span>↗</span></div>
+            <div class="mini-repo"><span class="repo-icon soft">◌</span><div><strong>Mobile experiments</strong><small>Swift · Updated 2d ago</small></div><span>↗</span></div>
+            <div class="showcase-footer"><span><b>24</b> repositories</span><span><b>08</b> languages</span><span class="spark-line">╱╲╱╲</span></div>
+          </div>
+        </div>
+        <p id="error-message" class="error-message" role="alert"></p>
+      </section>
+
+      <section id="dashboard" class="dashboard" aria-live="polite">
+        <div class="dashboard-topline">
+          <div>
+            <p class="section-label">Repository collection</p>
+            <h2 id="profile-title">Your repositories</h2>
+          </div>
+          <div id="profile-summary" class="profile-summary"></div>
+          <button id="sign-out" class="sign-out hidden" type="button">Sign out</button>
+        </div>
+
+        <div id="toolbar" class="toolbar hidden">
+          <label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search repositories..." /></label>
+          <label class="select-box"><span class="sr-only">Sort repositories</span><select id="sort"><option value="updated">Recently updated</option><option value="stars">Most starred</option><option value="name">Name A–Z</option></select></label>
+        </div>
+
+        <div id="language-filters" class="filters hidden"></div>
+        <div id="repo-grid" class="repo-grid"></div>
+      </section>
+    </main>
+
+    <footer class="site-footer">Built with the GitHub API · <span id="year"></span></footer>
+  </body>
+</html>
