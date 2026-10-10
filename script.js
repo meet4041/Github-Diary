@@ -9,7 +9,8 @@ const searchInput = document.querySelector("#search");
 const sortSelect = document.querySelector("#sort");
 const profileTitle = document.querySelector("#profile-title");
 const profileSummary = document.querySelector("#profile-summary");
-const signOutButton = document.querySelector("#sign-out");
+const dashboard = document.querySelector("#dashboard");
+const repoDetail = document.querySelector("#repo-detail");
 
 let repositories = [];
 let selectedLanguage = "All";
@@ -24,27 +25,12 @@ form.addEventListener("submit", (event) => {
 
 searchInput.addEventListener("input", renderRepositories);
 sortSelect.addEventListener("change", renderRepositories);
-signOutButton.addEventListener("click", () => { window.location.href = "/api/auth/logout"; });
-
-loadAuthenticatedSession();
-
-async function loadAuthenticatedSession() {
-  try {
-    const response = await fetch("/api/auth/session", { headers: { Accept: "application/json" } });
-    if (!response.ok) return;
-    const session = await response.json();
-    repositories = session.repositories;
-    usernameInput.value = session.profile.login;
-    profileTitle.textContent = `${session.profile.login}'s repositories`;
-    profileSummary.innerHTML = `<strong>${repositories.length}</strong> repos loaded · <a href="${session.profile.html_url}" target="_blank" rel="noreferrer">View profile ↗</a>`;
-    signOutButton.classList.remove("hidden");
-    toolbar.classList.remove("hidden");
-    buildFilters();
-    renderRepositories();
-  } catch {
-    // The public username form remains available when OAuth is not configured.
-  }
-}
+repoGrid.addEventListener("click", (event) => {
+  const infoButton = event.target.closest("[data-repo-id]");
+  if (!infoButton) return;
+  const repo = repositories.find((item) => String(item.id) === infoButton.dataset.repoId);
+  if (repo) openRepositoryDetails(repo);
+});
 
 async function loadProfile(username) {
   setLoading(true);
@@ -132,7 +118,32 @@ function repoCard(repo) {
   const description = repo.description ? escapeHtml(repo.description) : "No description added yet.";
   const language = repo.language ? `<span class="language"><i class="language-dot"></i>${escapeHtml(repo.language)}</span>` : '<span class="language">Project</span>';
   const visibility = repo.private ? " · Private" : "";
-  return `<article class="repo-card"><h3><a href="${repo.html_url}" target="_blank" rel="noreferrer">${escapeHtml(repo.name)} ↗</a></h3><p class="repo-description">${description}</p><div class="card-bottom">${language}<span class="stats">★ ${repo.stargazers_count} · ⑂ ${repo.forks_count}${visibility}</span></div></article>`;
+  return `<article class="repo-card"><div class="repo-card-head"><h3><a href="${repo.html_url}" target="_blank" rel="noreferrer">${escapeHtml(repo.name)} ↗</a></h3><button class="info-button" type="button" data-repo-id="${repo.id}" aria-label="View details for ${escapeHtml(repo.name)}">i</button></div><p class="repo-description">${description}</p><div class="card-bottom">${language}<span class="stats">★ ${repo.stargazers_count} · ⑂ ${repo.forks_count}${visibility}</span></div></article>`;
+}
+
+function openRepositoryDetails(repo) {
+  sessionStorage.setItem("github-diary-selected-repo", JSON.stringify(repo));
+  window.location.href = `repo.html?repo=${encodeURIComponent(repo.full_name || repo.name)}`;
+}
+
+function showRepositoryDetails(repo) {
+  const topics = repo.topics?.length ? repo.topics.map((topic) => `<span class="detail-tag">${escapeHtml(topic)}</span>`).join("") : '<span class="detail-muted">No topics added</span>';
+  const license = repo.license?.spdx_id || repo.license?.name || "No license specified";
+  const homepage = repo.homepage ? `<a href="${escapeHtml(repo.homepage)}" target="_blank" rel="noreferrer">Live project ↗</a>` : '<span class="detail-muted">No live URL</span>';
+  const repositoryState = repo.archived ? "Archived" : repo.disabled ? "Disabled" : repo.fork ? "Fork" : "Active";
+  const capabilities = [["Issues", repo.has_issues], ["Projects", repo.has_projects], ["Wiki", repo.has_wiki], ["Pages", repo.has_pages], ["Discussions", repo.has_discussions], ["Downloads", repo.has_downloads]].filter(([, enabled]) => enabled !== undefined).map(([label, enabled]) => `<span class="capability ${enabled ? "enabled" : "disabled"}">${enabled ? "✓" : "–"} ${label}</span>`).join("");
+  const owner = repo.owner?.login || "—";
+  const cloneCommand = repo.clone_url ? `git clone ${repo.clone_url}` : "—";
+  const sshCommand = repo.ssh_url ? `git clone ${repo.ssh_url}` : "—";
+  repoDetail.innerHTML = `<button class="back-button" type="button" id="back-to-repos">← Back to repositories</button><div class="detail-header"><div><p class="section-label">Repository details</p><h2>${escapeHtml(repo.name)}</h2><p class="detail-description">${repo.description ? escapeHtml(repo.description) : "No description added yet."}</p></div><a class="detail-github-link" href="${repo.html_url}" target="_blank" rel="noreferrer">Open on GitHub ↗</a></div><div class="detail-meta"><span class="visibility-badge ${repo.private ? "private" : "public"}">${repo.private ? "Private" : "Public"}</span><span class="state-badge">${repositoryState}</span><span>${repo.language ? escapeHtml(repo.language) : "No language detected"}</span><span>Updated ${formatDate(repo.updated_at)}</span></div><div class="detail-stats"><div><strong>${repo.stargazers_count ?? 0}</strong><span>Stars</span></div><div><strong>${repo.forks_count ?? 0}</strong><span>Forks</span></div><div><strong>${repo.open_issues_count ?? 0}</strong><span>Open issues</span></div><div><strong>${repo.watchers_count ?? 0}</strong><span>Watchers</span></div></div><div class="detail-section"><span class="detail-label">Repository information</span><div class="detail-grid"><div class="detail-block"><span>Full name</span><strong>${escapeHtml(repo.full_name || "—")}</strong></div><div class="detail-block"><span>Owner</span><strong>${escapeHtml(owner)}</strong></div><div class="detail-block"><span>Default branch</span><strong>${escapeHtml(repo.default_branch || "—")}</strong></div><div class="detail-block"><span>License</span><strong>${escapeHtml(license)}</strong></div><div class="detail-block"><span>Repository size</span><strong>${repo.size ? `${repo.size.toLocaleString()} KB` : "—"}</strong></div><div class="detail-block"><span>Created</span><strong>${formatDate(repo.created_at)}</strong></div><div class="detail-block"><span>Last updated</span><strong>${formatDate(repo.updated_at)}</strong></div><div class="detail-block"><span>Last pushed</span><strong>${formatDate(repo.pushed_at)}</strong></div></div></div><div class="detail-section"><span class="detail-label">Available features</span><div class="capabilities">${capabilities || '<span class="detail-muted">No feature information available</span>'}</div></div><div class="detail-section"><span class="detail-label">Topics</span><div class="detail-tags">${topics}</div></div><div class="detail-section"><span class="detail-label">Links</span><div class="detail-links"><div><span>Project</span>${homepage}</div><div><span>GitHub repository</span><a href="${repo.html_url}" target="_blank" rel="noreferrer">${escapeHtml(repo.html_url)} ↗</a></div></div></div><div class="detail-section"><span class="detail-label">Clone repository</span><code class="clone-command">${escapeHtml(cloneCommand)}</code><code class="clone-command">${escapeHtml(sshCommand)}</code></div>`;
+  dashboard.classList.add("hidden");
+  repoDetail.classList.remove("hidden");
+  document.querySelector("#back-to-repos").addEventListener("click", () => { repoDetail.classList.add("hidden"); dashboard.classList.remove("hidden"); });
+  repoDetail.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function formatDate(value) {
+  return value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value)) : "—";
 }
 
 function escapeHtml(value) {
